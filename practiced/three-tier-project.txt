@@ -128,3 +128,42 @@ SonarQube installations  --> Sonar-server --> localhost:9000 ---> sonartoken
 ################################################
 RUN PIPELINES OF BOTH BACKEND AND FRONT END AND MAKE REQUIRE CHANGES THAT NEED TO BE DONE.
 ################################################
+
+prometheus -grafana -alert manager set update
+
+$ helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+$ helm repo update
+
+follow : https://medium.com/@muppedaanvesh/a-hands-on-guide-setting-up-prometheus-and-alertmanager-in-kubernetes-with-custom-alerts-%EF%B8%8F-f9c6d37b27ca
+or 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+create custom-values.yaml
+
+# custom-values.yaml
+prometheus:
+  service:
+    type: NodePort
+grafana:
+  service:
+    type: NodePort
+alertmanager:
+  service:
+    type: NodePort
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+$ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack -f custom-values.yaml 
+
+open ports in the selected node security groups and access all the three prometheus ,grafana, alertmanger from outside  $ kubectl get svc & kubectl get node -o wide
+
+prometheus ---> status --> target  all the targets will be seen 
+
+grafana --> username: admin 
+            password : prom-operator     or $ kubectl get secrets --> $ kubectl edit secret kube-prometheus-stack-grafana --> $ echo "encoded password" | base64 --decode
+
+							after logging into  grafana:
+							    click on "Data source" --> "prometheus"
+setup custom rules if you want by seeing above medium link.
+
+###############################################
+argocd:
+  settings --> repositories --> give github id --> password.							
+
