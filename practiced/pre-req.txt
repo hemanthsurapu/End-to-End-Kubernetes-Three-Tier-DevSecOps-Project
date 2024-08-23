@@ -1,0 +1,78 @@
+# Specify the provider and region
+provider "aws" {
+  region = "us-east-1" # You can change this to your preferred AWS region
+}
+
+
+
+
+
+resource "aws_dynamodb_table" "my_table" {
+  name           = "my-dynamodb-table" # Name of the table
+  billing_mode   = "PROVISIONED"       # Billing mode
+  hash_key       = "LockID"            # Primary key (partition key) for the table
+  read_capacity  = 5                   # Provisioned read capacity
+  write_capacity = 5                   # Provisioned write capacity
+
+  attribute {
+    name = "LockID"
+    type = "S" # String type
+  }
+
+  tags = {
+    Name        = "My DynamoDB Table"
+    Environment = "Dev"
+  }
+}
+
+# Define the ECR repository
+resource "aws_ecr_repository" "my_repository" {
+  name                 = "backend" # Replace with your desired repository name
+  image_tag_mutability = "MUTABLE"     # Options: MUTABLE or IMMUTABLE
+  encryption_configuration {
+    encryption_type = "AES256" # Options: AES256 or KMS
+  }
+
+  tags = {
+    Name        = "backend"
+    Environment = "Dev"
+  }
+}
+
+# Define the ECR repository
+resource "aws_ecr_repository" "my_repository2" {
+  name                 = "frontend" # Replace with your desired repository name
+  image_tag_mutability = "MUTABLE"     # Options: MUTABLE or IMMUTABLE
+  encryption_configuration {
+    encryption_type = "AES256" # Options: AES256 or KMS
+  }
+
+  tags = {
+    Name        = "frontend"
+    Environment = "Dev"
+  }
+}
+
+# Define the S3 bucket
+resource "aws_s3_bucket" "my_bucket" {
+  bucket = "statefile-threetier-proj-123" # Replace with a globally unique name
+  acl    = "private"                      # You can specify other ACLs such as 'public-read' if needed
+
+  tags = {
+    Name        = "My S3 Bucket"
+    Environment = "Dev"
+  }
+}
+#outputs
+output "frontend_url"{
+  value = aws_ecr_repository.my_repository.repository_url
+}
+output "backend_url"{
+  value = aws_ecr_repository.my_repository2.repository_url
+}
+output "s3_bucket_name"{
+  value = aws_s3_bucket.my_bucket.bucket
+}
+output "dyanmo_db_name" {
+  value = aws_dynamodb_table.my_table.name
+}

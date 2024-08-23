@@ -1,0 +1,130 @@
+THREE - TIER - WEB - APP DEPLOYMENT:
+
+IAM USER -- CREATE A USER WITH REQUIRED PERMISSIONS (ADMIN PERMISSIONS ARE GIVEN)
+IAM ROLE --- WITH ADMINSTRATOR ACCESS.
+
+1. create a terraform agent -- intall tereraform
+ attach role to terraform agent that can create resources in aws.
+--> git clone https://github.com/AmanPathak-DevOps/End-to-End-Kubernetes-Three-Tier-DevSecOps-Project 
+--> create a jenkins agent using terraform --> we should have some pre requisites like ecr,s3bucket,dynamodbtable created.
+--> in jenkins-agent terraform code make sure to update s3 bucket ,dynamo.db and key names if any.
+--> in jenkins-agent:
+       userdata installed:
+	        - java
+			- jenkins
+			- docker (you can even run jenkins as a docker container )
+			- sonarqube
+			- aws-cli
+			- kubectl
+			- eksctl
+			- terraform
+			- trivy
+			- helm
+
+--> configure jenkins using console :
+ install pluggins :
+      - pipeline: aws steps   -->  This plugins adds Jenkins pipeline steps to interact with the AWS API.
+	  - aws credentials       --> to add aws credentials iand call them in pipeline
+	  
+--> setup aws credentials in credentials section.
+--> add github credentials in credentials section --> settings --> developertools --personalaccess tokens-- classic token with repo pem
+--> here we can create a infrsatructure pipeline using terraform to create kubernetes cluster. for quick creation we have used
+    eksctl to create infrastructure: use the below command on jenkins agent.
+	
+	$ eksctl create cluster --name Three-Tier-K8s-EKS-Cluster --region us-east-1 --node-type t2.medium --nodes-min 2 --nodes-max 2
+    $ aws eks update-kubeconfig --region us-east-1 --name Three-Tier-K8s-EKS-Cluster
+
+####################################
+alb load balancer controller configuration:
+1. download loadbalancer controller configuration from 
+git hub: curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.5.4/docs/install/iam_policy.json
+
+2. create a iam policy:
+ aws iam create-policy --policy-name AWSLoadBalancerControllerIAMPolicy --policy-document file://iam_policy.json	    
+
+3.create a oidc provider: 
+  $ eksctl utils associate-iam-oidc-provider --region=us-east-1 --cluster=Three-Tier-K8s-EKS-Cluster --approve
+
+4. create a service account:
+  $ eksctl create iamserviceaccount --cluster=Three-Tier-K8s-EKS-Cluster --namespace=kube-system --name=aws-load-balancer-controller --role-name AmazonEKSLoadBalancerControllerRole --attach-policy-arn=arn:aws:iam::<your_account_id>:policy/AWSLoadBalancerControllerIAMPolicy --approve --region=us-east-1
+
+5. create ingress controller with helm:
+    $ sudo snap install helm --classic
+    $ helm repo add eks https://aws.github.io/eks-charts
+    $ helm repo update eks
+    $ helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system --set clusterName=my-cluster --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller
+
+#######################################
+verify : kubectl get deployment -n kube-system 
+
+here alb controller is deployed as deployment in k8 inside the kube-system namespace.
+######################################
+
+--> create a namespace with three-tier where we deploy our frontend , backend micro services. --> $ kubectl create namespace three-tier
+--> login into created ecr previously from jenkins agent --> command present in aws console.
+--> create a secret --> The Secrets are coming from the .docker/config.json file which is created while login the ECR in the earlier steps --> 
+$ kubectl create secret generic ecr-registry-secret \
+	  --from-file=.dockerconfigjson=${HOME}/.docker/config.json \
+	  --type=kubernetes.io/dockerconfigjson --namespace three-tier
+$ kubectl get secrets -n three-tier
+
+########################################
+DEPLOY ARGOCD INTO CLUSTER FOR GITOPS APPROACH.
+$ kubectl create namespace argocd
+$ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.4.7/manifests/install.yaml
+
+--> edit service argocd-server and expose it as a loadbalancer type --> $ kubectl edit svc argocd-server -n argocd
+     alternatively u can patch the server --> $ kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+--> get initial admin password of argoce from secrets. --> kubectl get secrets -n argocd --> kubectl edit secret argocd-initial-admin-secret -n argocd -->
+    copy inital admin password.
+---> decode it with base64 as it is encoded --> echo"<encoded data>" |base64 --decode  --> copy password to argocd and username admin
+######################################
+login to sonarqube --> using 9000 port for jenkins agent. 
+--> login username -- admin , password --> admin
+--> change password
+--> select adminstration --> security --> users --> update-tokens
+--> configure webhooks -->  adminstration --> configuration --> webhook --> create --> name: webhook name --> url:http://<jenkins-server-public-ip>:8080/sonarqube-webhook/
+
+--> create a  project (front-end-code): --> create name and key --> setup 
+--> select locally --> existing token --> token name.
+--> run analysis on project --> others --> linux os 
+  you get the execute scanner code.
+
+--> create a project (backend-code): --> do same thing as above.
+###############################################
+cred in jenkins:
+---> create sonarcredentials in jenkins --> create using secret text 
+---> Create github credentials --> secrettext 
+---> create credentials as secret text  "frontend" with id : ECR_REPO1
+---> create credentials as secret text "backend"  with id : ECR_REPO2
+---> create credentials as secret text "aws-account-number" with id : ACCOUNT_ID
+###################################################
+install following pluggins:
+
+Docker                    ---->  This plugin integrates Jenkins with Docker
+Docker Commons            ---->  Provides the common shared functionality for various Docker-related plugins.
+Docker Pipeline           ---->  Build and use Docker containers from pipelines.
+Docker API                ---->  This plugin provides docker-java API for other plugins.
+docker-build-step         ---->  This plugin allows to add various docker commands to your job as build steps.
+Eclipse Temurin installer ---->  Provides an installer for the JDK tool that downloads the JDK from https://adoptium.net
+NodeJS                    ---->  NodeJS Plugin executes NodeJS script as a build step.
+OWASP Dependency-Check    ---->  This plug-in can independently execute a Dependency-Check analysis and visualize results. Dependency-Check is a utility that identifies project dependencies and checks if there are any known, publicly disclosed, vulnerabilities.
+SonarQube Scanner         ---->  This plugin allows an easy integration of SonarQube, the open source platform for Continuous Inspection of code quality.
+
+#################################################
+configure the tools: --> manage jenkins --> tools
+
+install jdk --> jdk --> install automatically from adoptium.net --> 17.0.1 +12  (make sure proper version of java is selected)
+sonarQubeScanner installation --> sonar-scanner --> install automatically from maven central 
+nodejs --> nodejs --> install automatically --> node 14.0.0.0
+Dependency-Check installations --> DP-Check --> install automatically from github
+Docker installations --> docker --> install automatically from docker.com
+
+####################################################
+setup sonarqube env --> Manage Jenkins -> System 
+
+SonarQube installations  --> Sonar-server --> localhost:9000 ---> sonartoken
+
+################################################
+RUN PIPELINES OF BOTH BACKEND AND FRONT END AND MAKE REQUIRE CHANGES THAT NEED TO BE DONE.
+################################################
